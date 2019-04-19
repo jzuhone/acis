@@ -17,6 +17,7 @@ import Ska.engarchive.fetch_sci as fetch
 from chandra_models import get_xija_model_file
 import matplotlib.pyplot as plt
 from kadi import events
+import importlib
 
 short_name = {"1deamzt": "dea",
               "1dpamzt": "dpa",
@@ -288,6 +289,10 @@ class ThermalModelRunner(ModelDataset):
                  tl_file=None):
 
         self.name = name
+        self.sname = short_name[name]
+        self.model_check = importlib.import_module("%s_check.%s_check" % (self.sname, self.sname))
+
+        self.model_spec = find_json(name, model_spec)
 
         tstart = get_time(tstart)
         tstop = get_time(tstop)
@@ -315,12 +320,10 @@ class ThermalModelRunner(ModelDataset):
 
         state_times = np.array([states["tstart"], states["tstop"]])
 
-        self.model_spec = find_json(name, model_spec)
-
         ephem_times, ephem_data = self._get_ephemeris(ephemeris, tstart_secs, tstop_secs)
 
-        self.xija_model = self._compute_model(name, tstart, tstop, states, 
-                                              state_times, dt, T_init, 
+        self.xija_model = self._compute_model(name, tstart, tstop, states,
+                                              state_times, dt, T_init,
                                               ephem_times=ephem_times,
                                               ephem_data=ephem_data)
 
@@ -362,57 +365,7 @@ class ThermalModelRunner(ModelDataset):
 
     def _compute_model(self, name, tstart, tstop, states, state_times, dt, T_init,
                        ephem_times=None, ephem_data=None):
-        if name == "fptemp_11":
-            name = "fptemp"
-        if isinstance(states, np.ndarray):
-            state_names = states.dtype.names
-        else:
-            state_names = list(states.keys())
-        if "off_nominal_roll" in state_names:
-            roll = np.array(states["off_nominal_roll"])
-        else:
-            roll = calc_off_nom_rolls(states)
-        model = xija.XijaModel(name, start=tstart, stop=tstop, dt=dt, model_spec=self.model_spec)
-        if 'eclipse' in model.comp:
-            model.comp['eclipse'].set_data(False)
-        model.comp[name].set_data(T_init)
-        model.comp['sim_z'].set_data(np.array(states['simpos']), state_times)
-        if 'roll' in model.comp:
-            model.comp['roll'].set_data(roll, state_times)
-        if 'dpa_power' in model.comp:
-            # This is just a hack, we're not
-            # really setting the power to zero.
-            model.comp['dpa_power'].set_data(0.0) 
-        # This is for the PSMC model
-        if 'pin1at' in model.comp:
-            model.comp['pin1at'].set_data(T_init-10.)
-        if 'dpa0' in model.comp:
-            model.comp['dpa0'].set_data(T_init)
-        if 'dh_heater' in model.comp:
-            model.comp['dh_heater'].set_data(states.get("dh_heater", 0), state_times)
-        for st in ('ccd_count', 'fep_count', 'vid_board', 'clocking', 'pitch'):
-            model.comp[st].set_data(np.array(states[st]), state_times)
-        if name == "fptemp":
-            for axis in "xyz":
-                ephem = 'orbitephem0_{}'.format(axis)
-                if ephem_times is None:
-                    msid = fetch.Msid(ephem, model.tstart - 2000, model.tstop + 2000)
-                    e_times = msid.times
-                    e_data = msid.vals
-                else:
-                    e_times = ephem_times
-                    e_data = ephem_data[ephem]
-                model.comp[ephem].set_data(e_data, e_times)
-            for i in range(1, 5):
-                quat = 'aoattqt{}'.format(i)
-                quat_name = 'q{}'.format(i)
-                model.comp[quat].set_data(states[quat_name], state_times)
-            model.comp['1cbat'].set_data(-53.0)
-            model.comp['sim_px'].set_data(-120.0)
-
-        model.make()
-        model.calc()
-        return model
+        pass
 
     @classmethod
     def from_states_file(cls, name, tstart, tstop, states_file, T_init,
